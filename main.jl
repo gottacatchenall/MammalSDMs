@@ -184,6 +184,8 @@ data_dir = "/project/def-tpoisot/mcatchen/MammalOccurrence"
 artifact_dir = "/scratch/mcatchen/MammalSDMs"
 
 species_paths = joinpath.(data_dir, sort(readdir(data_dir)))
+
+@info "Loading occurrences from: $(species_paths[job_id])"
 occs = load_occurrences(species_paths[job_id])
 
 species_name = String(split(species_paths[job_id], ".")[1])
