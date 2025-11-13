@@ -188,7 +188,7 @@ species_paths = joinpath.(data_dir, sort(readdir(data_dir)))
 @info "Loading occurrences from: $(species_paths[job_id])"
 occs = load_occurrences(species_paths[job_id])
 
-species_name = String(split(species_paths[job_id], ".")[1])
+species_name = String(split(split(species_paths[job_id], "/")[end], ".")[1])
 
 @info "Fitting model for species: $species_name"
 
