@@ -108,6 +108,8 @@ function fit_sdm(
     k = 4
 )
     presence_layer = mask(environmental_layers[begin], occurrences)
+
+    @info "Generating pseudoabsences..."
     absence_layer = generate_pseudoabsences(presence_layer, pseudoabsence_buffer_distance, class_balance)
     
     features, labels = prepare_training_data(environmental_layers, presence_layer, absence_layer)
@@ -185,6 +187,9 @@ species_paths = joinpath.(data_dir, sort(readdir(data_dir)))
 occs = load_occurrences(species_paths[job_id])
 
 species_name = String(split(species_paths[job_id], ".")[1])
+
+@info "Fitting model for species: $species_name"
+
 environmental_layers = [SDMLayer(RasterData(WorldClim2, BioClim), layer=i, bottom=-60.) for i in 1:19]
 results = fit_sdm(
     occs,
