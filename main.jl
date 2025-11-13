@@ -177,7 +177,7 @@ function load_occurrences(path)
 end
 
 
-job_id = ENV["SLURM_ARRAY_TASK_ID"]
+job_id = parse(Int, ENV["SLURM_ARRAY_TASK_ID"])
 data_dir = "/project/def-tpoisot/mcatchen/MammalOccurrence"
 artifact_dir = "/scratch/mcatchen/MammalSDMs"
 
