@@ -4,6 +4,7 @@ using Statistics
 using EvoTrees
 using JSON
 using CairoMakie
+using Random
 const SDT = SpeciesDistributionToolkit
 
 function load_baseline_climate_layers(worldclim_dir)
