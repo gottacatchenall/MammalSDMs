@@ -7,7 +7,7 @@ using CairoMakie
 const SDT = SpeciesDistributionToolkit
 
 function load_baseline_climate_layers(worldclim_dir)
-    baseline_directory = joinpath(worldclim_dir, "baseline")
+    baseline_directory = joinpath(worldclim_dir)
 
     filenames = readdir(baseline_directory)
     
@@ -205,7 +205,7 @@ end
 job_id = parse(Int, ENV["SLURM_ARRAY_TASK_ID"])
 data_dir = "/project/def-tpoisot/mcatchen/MammalOccurrence"
 artifact_dir = "/scratch/mcatchen/MammalSDMs"
-worldclim_dir = "/project/def-tpoisot/mcatchen/WorldClim" 
+worldclim_dir = "/project/def-tpoisot/mcatchen/JuliaEnvironments/ColoradoBees/SimpleSDMDatasets/WorldClim2/BioClim/"
 
 species_paths = joinpath.(data_dir, sort(readdir(data_dir)))
 

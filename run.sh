@@ -9,7 +9,7 @@
 #SBATCH --array=1-230 
 #SBATCH --time=1:00:00         
 
-export JULIA_DEPOT_PATH="/project/def-tpoisot/mcatchen/JuliaEnvironments/MammalSDMs"
+export JULIA_DEPOT_PATH="/project/def-tpoisot/mcatchen/JuliaEnvironments/ColoradoBees"
 
 module load julia/1.11.3
 srun --unbuffered julia main.jl
