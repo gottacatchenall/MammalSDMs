@@ -187,8 +187,8 @@ function write_sdm_artifacts(artifact_dir, species_name, results)
         results[:uncertainty]
     )        
     SDT.SimpleSDMLayers.save(
-        joinpath(output_dir, "prediction.tif"),
-        results[:prediction]
+        joinpath(output_dir, "range.tif"),
+        results[:range]
     )        
 
     open(joinpath(output_dir, "metrics.json"), "w") do f
@@ -225,12 +225,11 @@ model, range_map, uncertainty_map, statistics, presences, absences = fit_sdm(
 )
 
 results = Dict(
-    :baseline => Dict(
-        :range => range_map,
-        :uncertainty => uncertainty_map,
-        :presences => presences,
-        :absences => absences,
-    )
+    :range => range_map,
+    :uncertainty => uncertainty_map,
+    :presences => presences,
+    :absences => absences,
+    :metrics => statistics
 )
 
 write_sdm_artifacts(artifact_dir, species_name, results)
