@@ -230,8 +230,7 @@ results = Dict(
         :uncertainty => uncertainty_map,
         :presences => presences,
         :absences => absences,
-    ),
-    :future => future_projections,
+    )
 )
 
 write_sdm_artifacts(artifact_dir, species_name, results)
