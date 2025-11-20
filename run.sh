@@ -12,4 +12,4 @@
 export JULIA_DEPOT_PATH="/project/def-tpoisot/mcatchen/JuliaEnvironments/MammalSDMs"
 
 module load julia/1.11.3
-julia main.jl
+srun --unbuffered julia main.jl

@@ -6,6 +6,21 @@ using JSON
 using CairoMakie
 const SDT = SpeciesDistributionToolkit
 
+function load_baseline_climate_layers(worldclim_dir)
+    baseline_directory = joinpath(worldclim_dir, "baseline")
+
+    filenames = readdir(baseline_directory)
+    
+    layer_paths = [
+        joinpath(baseline_directory, filenames[findfirst(fn -> occursin(pattern, fn), filenames)]) 
+        for pattern in ["_bio_$i.tif" for i in 1:19]
+    ]
+    
+    # Load and convert to Float32
+    layers = [SDMLayer(path; bottom=-60.) for path in layer_paths]
+    return [Float32.(layer) for layer in layers]
+end
+
 function generate_pseudoabsences(
     presence_layer, 
     buffer_distance_km, 
@@ -35,9 +50,9 @@ function prepare_training_data(layers, presence_layer, absence_layer)
     return X, y
 end
 
-function train_model(X_train, y_train)
+function train_model(X_train, y_train; max_depth = 6)
     return EvoTrees.fit(
-        EvoTreeGaussian(),
+        EvoTreeGaussian(max_depth = max_depth),
         x_train = X_train',
         y_train = y_train,
     )
@@ -80,9 +95,10 @@ function calculate_evaluation_metrics(y_true, y_predicted, thresholds=0:0.001:1)
     pr_dy = [reverse(precisions)[i] + reverse(precisions)[i-1] for i in 2:length(precisions)]
     pr_auc = sum(pr_dx .* (pr_dy ./ 2.0))
     
-    # Find optimal threshold using True Skill Statistic
-    optimal_threshold, threshold_index = findmax(trueskill.(confusion_matrices))
-    
+    # Find optimal threshold using MCC
+    _, threshold_index = findmax(mcc.(confusion_matrices))
+    optimal_threshold = thresholds[threshold_index]
+
     return Dict(
         :prauc => pr_auc,
         :rocauc => roc_auc,
@@ -100,51 +116,58 @@ function aggregate_fold_statistics(fold_stats)
     )
 end
 
+
 function fit_sdm(
     occurrences,
     environmental_layers;
     pseudoabsence_buffer_distance = 25.0,
     class_balance = 1.0,
+    max_depth = 6,
     k = 4
 )
+    # Create presence layer from occurrence points
     presence_layer = mask(environmental_layers[begin], occurrences)
-
-    @info "Generating pseudoabsences..."
+    
+    @info "    |-> Generating pseudoabsences..."
+    Random.seed!(123) # standardize across tuning tests
     absence_layer = generate_pseudoabsences(presence_layer, pseudoabsence_buffer_distance, class_balance)
     
+    # Prepare training data
     features, labels = prepare_training_data(environmental_layers, presence_layer, absence_layer)
+    
+    # Create cross-validation folds
+    Random.seed!(123) # standardize across tuning tests
     fold_indices = SDeMo.kfold(labels, features, k=k)
     
-    fold_statistics = []
-    prediction_layers = []
-    uncertainty_layers = []
-    trained_models = []
-        
+    # Storage for results
+    true_labels = Bool[]
+    out_of_fold_predictions = Float32[]
+    
+    @info "    |-> Training $(k) cross-validation folds..."
+    
+    # Train and evaluate each fold
     for (train_idx, validation_idx) in fold_indices
-        model = train_model(features[:, train_idx], labels[train_idx])
+        model = train_model(features[:, train_idx], labels[train_idx]; max_depth = max_depth)
         
+        # Evaluate on validation set
         validation_predictions = predict_distribution(model, features[:, validation_idx])[:, 1]
-        push!(fold_statistics, calculate_evaluation_metrics(labels[validation_idx], validation_predictions))
-        
-        prediction, uncertainty = create_prediction_layer(model, environmental_layers)
-        push!(prediction_layers, prediction)
-        push!(uncertainty_layers, uncertainty)
-        push!(trained_models, model)
+
+        true_labels = vcat(true_labels, labels[validation_idx])
+        out_of_fold_predictions = vcat(out_of_fold_predictions, validation_predictions)
     end
     
-    aggregated_statistics = aggregate_fold_statistics(fold_statistics)
+    # Compute fit stats on out-of-fold predictions
+    fit_stats = calculate_evaluation_metrics(true_labels, out_of_fold_predictions)
+    optimal_threshold = fit_stats[:threshold]
     
-    mean_prediction = mean(prediction_layers)
-    uncertainty_map = mean(uncertainty_layers)
+    # Fit full model
+    model = train_model(features, labels; max_depth = max_depth)
+    prediction, uncertainty = create_prediction_layer(model, environmental_layers)    
+    range_map = Int.(prediction .> optimal_threshold)
     
-    return Dict(
-        :prediction => mean_prediction, 
-        :uncertainty => uncertainty_map, 
-        :metrics => aggregated_statistics, 
-        :presences => presence_layer, 
-        :absences => absence_layer
-    )
+    return model, range_map, uncertainty, fit_stats, presence_layer, absence_layer
 end
+
 
 function write_sdm_artifacts(artifact_dir, species_name, results)
     mkpath(artifact_dir)
@@ -182,6 +205,7 @@ end
 job_id = parse(Int, ENV["SLURM_ARRAY_TASK_ID"])
 data_dir = "/project/def-tpoisot/mcatchen/MammalOccurrence"
 artifact_dir = "/scratch/mcatchen/MammalSDMs"
+worldclim_dir = "/project/def-tpoisot/mcatchen/WorldClim" 
 
 species_paths = joinpath.(data_dir, sort(readdir(data_dir)))
 
@@ -192,10 +216,22 @@ species_name = String(split(split(species_paths[job_id], "/")[end], ".")[1])
 
 @info "Fitting model for species: $species_name"
 
-environmental_layers = [SDMLayer(RasterData(WorldClim2, BioClim), layer=i, bottom=-60.) for i in 1:19]
-results = fit_sdm(
+environmental_layers = load_baseline_climate_layers(worldclim_dir)
+
+model, range_map, uncertainty_map, statistics, presences, absences = fit_sdm(
     occs,
     environmental_layers
 )
 
+results = Dict(
+    :baseline => Dict(
+        :range => range_map,
+        :uncertainty => uncertainty_map,
+        :presences => presences,
+        :absences => absences,
+    ),
+    :future => future_projections,
+)
+
 write_sdm_artifacts(artifact_dir, species_name, results)
+
