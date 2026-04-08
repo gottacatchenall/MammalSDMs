@@ -239,7 +239,7 @@ function main()
     all_species = [String(split(x,".")[begin]) for x in unique(readdir(joinpath("data", "species_occurrence")))]
     species = all_species[job_id]
 
-    @info "Fitting model for species: $species_name"
+    @info "Fitting model for species: $species"
 
     # Load occurrences and environmental features
     occs = load_occurrences(joinpath("data", "species_occurrence", species * ".csv"))
