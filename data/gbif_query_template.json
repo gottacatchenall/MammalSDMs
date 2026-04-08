@@ -1,0 +1,24 @@
+{
+  "sendNotification": false,
+  "format": "SIMPLE_CSV",
+  "predicate": {
+        "type": "and",
+        "predicates": [
+            {
+                "type": "equals",
+                "key": "DATASET_KEY",
+                "value": "50c9509d-22c7-4a22-a47d-8c48425ef4a7" 
+            },
+            {
+                "type": "equals",
+                "key": "HAS_COORDINATE",
+                "value": true
+            },
+            {
+                "type": "equals",
+                "key": "BASIS_OF_RECORD",
+                "value": "HUMAN_OBSERVATION"
+            }
+        ]
+    }
+}

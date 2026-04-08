@@ -83,27 +83,12 @@ end
 function calculate_evaluation_metrics(y_true, y_predicted, thresholds=0:0.001:1)
     # Calculate confusion matrices across all thresholds
     confusion_matrices = [ConfusionMatrix(y_predicted .> t, y_true) for t in thresholds]
-    false_positive_rates, true_positive_rates = fpr.(confusion_matrices), tpr.(confusion_matrices)
     
-    # Calculate ROC-AUC using trapezoidal rule
-    roc_dx = [reverse(false_positive_rates)[i] - reverse(false_positive_rates)[i-1] for i in 2:length(false_positive_rates)]
-    roc_dy = [reverse(true_positive_rates)[i] + reverse(true_positive_rates)[i-1] for i in 2:length(true_positive_rates)]
-    roc_auc = sum(roc_dx .* (roc_dy ./ 2.0))
-    
-    # Calculate PR-AUC using trapezoidal rule
-    precisions = ppv.(confusion_matrices)
-    pr_dx = [reverse(true_positive_rates)[i] - reverse(true_positive_rates)[i-1] for i in 2:length(true_positive_rates)]
-    pr_dy = [reverse(precisions)[i] + reverse(precisions)[i-1] for i in 2:length(precisions)]
-    pr_auc = sum(pr_dx .* (pr_dy ./ 2.0))
-    
-    # Find optimal threshold using MCC
-    _, threshold_index = findmax(mcc.(confusion_matrices))
+    # Find optimal threshold using TSS (aka Youden's J aka Informedness)
+    _, threshold_index = findmax(trueskill.(confusion_matrices))
     optimal_threshold = thresholds[threshold_index]
 
     return Dict(
-        :prauc => pr_auc,
-        :rocauc => roc_auc,
-        :tss => trueskill(confusion_matrices[threshold_index]),
         :mcc => mcc(confusion_matrices[threshold_index]),
         :threshold => optimal_threshold
     )
@@ -164,13 +149,13 @@ function fit_sdm(
     # Fit full model
     model = train_model(features, labels; max_depth = max_depth)
     prediction, uncertainty = create_prediction_layer(model, environmental_layers)    
-    range_map = Int.(prediction .> optimal_threshold)
+    #range_map = Int.(prediction .> optimal_threshold)
     
-    return model, range_map, uncertainty, fit_stats, presence_layer, absence_layer
+    return model, prediction, uncertainty, fit_stats, presence_layer, absence_layer
 end
 
 
-function write_sdm_artifacts(artifact_dir, species_name, results)
+function write_sdm_artifacts(artifact_dir, species_name, results, future_years)
     mkpath(artifact_dir)
     output_dir = joinpath(artifact_dir, species_name)
     mkpath(output_dir)
@@ -187,9 +172,19 @@ function write_sdm_artifacts(artifact_dir, species_name, results)
         results[:uncertainty]
     )        
     SDT.SimpleSDMLayers.save(
-        joinpath(output_dir, "range.tif"),
-        results[:range]
+        joinpath(output_dir, "prediction.tif"),
+        results[:prediction]
     )        
+
+    futures_dir = joinpath(output_dir, "future")
+    mkpath(futures_dir)
+
+    for (i, yr) in enumerate(future_years)
+        SDT.SimpleSDMLayers.save(
+            joinpath(futures_dir, "$yr.tif"),
+            results[:futures][i]
+        )       
+    end
 
     open(joinpath(output_dir, "metrics.json"), "w") do f
         JSON.print(f, results[:metrics])
@@ -199,38 +194,78 @@ end
 function load_occurrences(path)
     df = CSV.read(path, DataFrame)
     species = split(split(path, "/")[end], ".")[begin]
-    return Occurrences([Occurrence(what=species, presence=true, where=(row.decimalLongitude, row.decimalLatitude)) for row in eachrow(df)])
+    return Occurrences([Occurrence(what=species, presence=true, where=(row.longitude, row.latitude)) for row in eachrow(df)])
+end
+
+function load_baseline_worldclim(; 
+    scale = 10, 
+    left = -70, 
+    right = -50, 
+    top = 30., 
+    bottom = 50
+)
+    scale_str = Dict(10=>"10m", 5 => "5m", 2.5=> "2.5m", 0.5=>"30s")[scale]
+    [SDMLayer("/Users/michael/.julia/SimpleSDMDatasets/WorldClim2/BioClim/wc2.1_$(scale_str)_bio_$i.tif"; left = left, right = right, bottom = bottom, top = top) for i in 1:19]
+end
+
+function load_future_worldclim(; 
+    scale = 10, 
+    left = -70, 
+    right = -50, 
+    top = 30., 
+    bottom = 50,
+    years = "2021-2040",
+    dir = "/home/mcatchen/projects/def-tpoisot/mcatchen/WorldClim/RodentFuture"
+)
+    scale_str = Dict(10=>"10m", 5 => "5m", 2.5=> "2.5m", 0.5=>"30s")[scale]
+    file_path = joinpath(dir, "wc2.1_$(scale_str)_bioc_ACCESS-CM2_ssp245_$years.tif")
+    [SDMLayer(file_path; bandnumber = i, left = left, right = right, bottom = bottom, top = top) for i in 1:19]
 end
 
 
-job_id = parse(Int, ENV["SLURM_ARRAY_TASK_ID"])
-data_dir = "/project/def-tpoisot/mcatchen/MammalOccurrence"
-artifact_dir = "/scratch/mcatchen/MammalSDMs"
-worldclim_dir = "/project/def-tpoisot/mcatchen/JuliaEnvironments/ColoradoBees/SimpleSDMDatasets/WorldClim2/BioClim/"
+function main()
 
-species_paths = joinpath.(data_dir, sort(readdir(data_dir)))
+    # CONSTANTs
+    SCALE = 2.5
+    BBOX = (left=-145., right=-52., bottom=15., top=68.)
+    ARTIFACT_DIR = "/scratch/mcatchen/RodentSDMs"
+    YEARS = ["2021-2040", "2041-2060", "2061-2080", "2081-2100"]
 
-@info "Loading occurrences from: $(species_paths[job_id])"
-occs = load_occurrences(species_paths[job_id])
+    # Get species for this job
+    job_id = parse(Int, ENV["SLURM_ARRAY_TASK_ID"])
+    all_species = [String(split(x,".")[begin]) for x in unique(readdir(joinpath("data", "species_occurrence")))]
+    species = all_species[job_id]
 
-species_name = String(split(split(species_paths[job_id], "/")[end], ".")[1])
+    @info "Fitting model for species: $species_name"
 
-@info "Fitting model for species: $species_name"
+    # Load occurrences and environmental features
+    occs = load_occurrences(joinpath("data", "species_occurrence", species * ".csv"))
+    environmental_layers = load_baseline_worldclim(; scale=SCALE, BBOX...)
 
-environmental_layers = load_baseline_climate_layers(worldclim_dir)
+    # Fit baseline SDM
+    model, prediction, uncertainty, statistics, presences, absences = fit_sdm(
+        occs,
+        environmental_layers;
+        pseudoabsence_buffer_distance = 50
+    )
 
-model, range_map, uncertainty_map, statistics, presences, absences = fit_sdm(
-    occs,
-    environmental_layers
-)
 
-results = Dict(
-    :range => range_map,
-    :uncertainty => uncertainty_map,
-    :presences => presences,
-    :absences => absences,
-    :metrics => statistics
-)
+    futures = []
+    for yr in YEARS
+        future_worldclim = load_future_worldclim(; years = yr, scale = SCALE, BBOX... )
+        p, u = create_prediction_layer(model, future_worldclim)
+        push!(futures, p)
+    end
 
-write_sdm_artifacts(artifact_dir, species_name, results)
+    results = Dict(
+        :prediction => prediction,
+        :uncertainty => uncertainty,
+        :presences => presences,
+        :absences => absences,
+        :futures => futures,
+        :metrics => statistics,
+    )
 
+    write_sdm_artifacts(ARTIFACT_DIR, species, results, YEARS)
+
+end 

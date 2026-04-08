@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --account=def-tpoisot
-#SBATCH --job-name=MammalSDMs 
+#SBATCH --job-name=RodentSDMs 
 #SBATCH --output=%x-%A-%a.out
 #SBATCH --nodes=1               
 #SBATCH --ntasks=1               
@@ -12,4 +12,4 @@
 export JULIA_DEPOT_PATH="/project/def-tpoisot/mcatchen/JuliaEnvironments/ColoradoBees"
 
 module load julia/1.11.3
-srun --unbuffered julia main.jl
+srun --unbuffered julia 04_fit_sdm.jl
