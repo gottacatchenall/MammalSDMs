@@ -202,10 +202,11 @@ function load_baseline_worldclim(;
     left = -70, 
     right = -50, 
     top = 30., 
-    bottom = 50
+    bottom = 50,
+    dir = "/home/mcatchen/projects/def-tpoisot/mcatchen/WorldClim/RodentFuture/bioclim"
 )
     scale_str = Dict(10=>"10m", 5 => "5m", 2.5=> "2.5m", 0.5=>"30s")[scale]
-    [SDMLayer("/Users/michael/.julia/SimpleSDMDatasets/WorldClim2/BioClim/wc2.1_$(scale_str)_bio_$i.tif"; left = left, right = right, bottom = bottom, top = top) for i in 1:19]
+    [SDMLayer(joinpath(dir, "wc2.1_$(scale_str)_bio_$i.tif"); left = left, right = right, bottom = bottom, top = top) for i in 1:19]
 end
 
 function load_future_worldclim(; 
