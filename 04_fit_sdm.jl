@@ -272,3 +272,5 @@ function main()
     write_sdm_artifacts(ARTIFACT_DIR, species, results, YEARS)
 
 end 
+
+main()
