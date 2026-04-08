@@ -114,6 +114,8 @@ function fit_sdm(
     # Create presence layer from occurrence points
     presence_layer = mask(environmental_layers[begin], occurrences)
     
+    sum(presence_layer) > 0 || error("No presences in region. Aborting")
+
     @info "    |-> Generating pseudoabsences..."
     Random.seed!(123) # standardize across tuning tests
     absence_layer = generate_pseudoabsences(presence_layer, pseudoabsence_buffer_distance, class_balance)
