@@ -236,7 +236,7 @@ function main()
 
     # Get species for this job
     job_id = parse(Int, ENV["SLURM_ARRAY_TASK_ID"])
-    all_species = [String(split(x,".")[begin]) for x in unique(readdir(joinpath("data", "species_occurrence")))]
+    all_species = sort(readlines(joinpath("data", "species_with_enough_occurrences.txt")))
     species = all_species[job_id]
 
     @info "Fitting model for species: $species"
@@ -274,3 +274,21 @@ function main()
 end 
 
 main()
+
+
+#=
+# Check how many hosts have enough occurrences to not be stupid 
+species_to_keep = []
+for x in readdir(joinpath("data", "species_occurrence"))
+    occs = load_occurrences(joinpath("data", "species_occurrence", x)) 
+    if length(occs) > 50
+        push!(species_to_keep, split(x, ".")[1])
+    end
+end
+
+writedlm(joinpath("data", "species_with_enough_occurrences.txt"), species_to_keep, '\n')
+
+species_to_keep
+
+readlines(joinpath("data", "species_with_enough_occurrences.txt"))
+=#
