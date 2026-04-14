@@ -120,6 +120,7 @@ Peromyscus fraterculus
 Peromyscus gambelli
 Peromyscus gossypinus
 Peromyscus greenbaumi
+Peromyscus leucopus
 Peromyscus maniculatus
 Peromyscus purepechus
 Peromyscus sonoriensis
