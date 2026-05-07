@@ -241,7 +241,7 @@ function main()
 
     # Get species for this job
     job_id = parse(Int, ENV["SLURM_ARRAY_TASK_ID"])
-    all_species = sort(readlines(joinpath("data", "species_with_enough_occurrences.txt")))
+    all_species = sort(readlines(joinpath("data", "species_with_enough_occurrences_for_sdms.txt")))
     species = all_species[job_id]
 
     @info "Fitting model for species: $species"
