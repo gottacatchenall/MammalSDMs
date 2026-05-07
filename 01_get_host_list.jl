@@ -37,45 +37,7 @@ for c in names(df)
     end 
 end 
 
-
-
-#=
-# fix typo
-species_list = [replace(
-    x,
-    "Uroticellus" => "Urocitellus",
-) for x in species_list]
-species_list = replace(
-    species_list,
-    "Casiomys melanotis" => "Handleyomys melanotis",
-    "Casiomys rostratus" => "Handleyomys rostratus",
-    "Casiomys alfaroi" => "Handleyomys alfaroi",
-    "Casiomys rhabdops" => "Handleyomys rhabdops",
-    "Casiomys chapmani" => "Handleyomys chapmani",
-    "Casiomys saturatior" => "Handleyomys saturatior",
-    "Casiomys guerrerensis" => "Handleyomys guerrerensis"
-    "Uroticellus" => "Urocitellus",
-)
-=#
-
 writedlm(joinpath("data", "species_list.txt"), df.species, '\n')
 
 
-species_w_enough_occurrences = readlines(joinpath("data", "species_with_enough_occurrences.txt"))
-distance_matrix = filter(x -> x.species ∈ species_w_enough_occurrences, df)
-select!(distance_matrix, ["species", species_w_enough_occurrences...])
-
-
-score_df = DataFrame([x=>[] for x in names(distance_matrix)]...)
-for r in eachrow(distance_matrix)
-    row = [x for x in r[2:end]]
-    score_row = maximum(row) .- row
-    s = sum(score_row)
-    normalized_row = score_row ./ s
-    push!(score_df, [r.species, normalized_row...])
-end
-
-score_df
-
-CSV.write(joinpath("data", "weights.csv"), score_df)
 

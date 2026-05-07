@@ -148,12 +148,14 @@ function fit_sdm(
     fit_stats = calculate_evaluation_metrics(true_labels, out_of_fold_predictions)
     optimal_threshold = fit_stats[:threshold]
     
+    importance = Dict(EvoTrees.importance(model))
+
     # Fit full model
     model = train_model(features, labels; max_depth = max_depth)
     prediction, uncertainty = create_prediction_layer(model, environmental_layers)    
     #range_map = Int.(prediction .> optimal_threshold)
     
-    return model, prediction, uncertainty, fit_stats, presence_layer, absence_layer
+    return model, prediction, uncertainty, fit_stats, importance, presence_layer, absence_layer
 end
 
 
@@ -190,6 +192,9 @@ function write_sdm_artifacts(artifact_dir, species_name, results, future_years)
 
     open(joinpath(output_dir, "metrics.json"), "w") do f
         JSON.print(f, results[:metrics])
+    end
+    open(joinpath(output_dir, "importance.json"), "w") do f
+        JSON.print(f, results[:importance])
     end
 end
 
@@ -246,7 +251,7 @@ function main()
     environmental_layers = load_baseline_worldclim(; scale=SCALE, BBOX...)
 
     # Fit baseline SDM
-    model, prediction, uncertainty, statistics, presences, absences = fit_sdm(
+    model, prediction, uncertainty, statistics, importance, presences, absences = fit_sdm(
         occs,
         environmental_layers;
         pseudoabsence_buffer_distance = 50
@@ -267,6 +272,7 @@ function main()
         :absences => absences,
         :futures => futures,
         :metrics => statistics,
+        :importance => importance
     )
 
     write_sdm_artifacts(ARTIFACT_DIR, species, results, YEARS)
