@@ -39,7 +39,9 @@ function read_sdms(dir)
         :prediction => SDMLayer(joinpath(dir,"prediction.tif")),
         :uncertainty => SDMLayer(joinpath(dir, "uncertainty.tif")),
         :future => [SDMLayer(joinpath(dir, "future", x*".tif")) for x in YEARS],
-        :metrics => JSON.parse(readline(joinpath(dir, "metrics.json")))
+        :metrics => JSON.parse(readline(joinpath(dir, "metrics.json"))),
+        :importance => JSON.parse(readline(joinpath(dir, "importance.json")))
+
     )
 end
 
@@ -334,3 +336,108 @@ end
 
 save("distance_function.png", f)
 
+# =================================================================
+# Feature Importance 
+# =================================================================
+
+sdms["Peromyscus maniculatus"][:importance]
+sdms["Peromyscus leucopus"][:importance]
+
+
+feat_names = ["feat_$i" for i in 1:19]
+top_feature_count = [0 for i in 1:19]
+importance_sum = [0. for i in 1:19]
+rank_sum = [0. for i in 1:19]
+
+ct = 0
+for (sp, sdm) in sdms
+    any(isnothing, values(sdm[:importance])) && continue
+    feat_name = argmax(sdm[:importance])
+    idx = findfirst(isequal(feat_name), feat_names)
+    top_feature_count[idx] += 1
+
+    for i in 1:19
+        importance_sum[i] += sdm[:importance]["feat_$i"]
+    end 
+
+    sorted_pairs = reverse(sort(collect(sdm[:importance]), by = x -> x.second))
+    for i in eachindex(sorted_pairs)
+        idx = findfirst(isequal(sorted_pairs[i][1]), feat_names)
+        rank_sum[idx] += i
+    end
+
+    ct += 1
+end 
+
+importance_sum ./= ct
+rank_sum ./= ct
+
+
+xlabels = [layerdescriptions(RasterData(CHELSA2, BioClim))["BIO$i"] for i in 1:19]
+
+f = Figure(size=(1000, 900))
+ax = Axis(f[1,1], ylabelsize = 20, xticklabelsvisible=false, ylabel = "Mean Importance")
+barplot!(ax, importance_sum)
+ax = Axis(f[2,1], ylabelsize = 20, xticks=(1:19, xlabels), xticklabelrotation=π/2, ylabel = "Number Species as\nMost Importance Feature")
+ylims!(ax, 0, 40)
+barplot!(ax, top_feature_count)
+f
+
+save("importance.png", f)
+
+
+df = DataFrame(Dict("species"=>[], ["bio$i" => [] for i in 1:19]...))
+df = select(df, ["species", ["bio$i" for i in 1:19]...])
+
+
+for (sp, sdm) in sdms
+    any(isnothing, values(sdm[:importance])) && continue
+    push!(df, (sp, [sdm[:importance]["feat_$i"] for i in 1:19]...))    
+end 
+
+CSV.write("importance.csv", df)
+
+
+
+# 
+
+heights = [[sdms["Peromyscus leucopus"][:importance][f] for f in feat_names]..., [sdms["Peromyscus maniculatus"][:importance][f] for f in feat_names]...]
+cats = [collect(1:19)..., collect(1:19)...]
+
+
+tbl = (
+    cat = [collect(1:19)..., collect(1:19)...],
+    height = [[sdms["Peromyscus leucopus"][:importance][f] for f in feat_names]..., [sdms["Peromyscus maniculatus"][:importance][f] for f in feat_names]...],
+    grp =vcat([[1,2] for i in 1:19]...)
+)
+
+
+f = Figure(size = (600, 700))
+ax = Axis(f[1,1], ylabelsize = 20, xticks=(1:19, xlabels), xticklabelrotation=π/2, ylabel = "Feature Importance")
+barplot!(ax, tbl.cat, tbl.height,
+    dodge = tbl.grp,
+    color = tbl.grp,
+    colormap = [:dodgerblue, :seagreen4]
+)
+axislegend(ax, [PolyElement(color=:dodgerblue), PolyElement(color=:seagreen4)], ["Peromyscus leucopus", "Peromyscus maniculatus"], position=:lt)
+f
+
+save("impt_leuc_mani.png", f)
+
+
+const SDT = SpeciesDistributionToolkit
+
+
+
+bio10 = SDMLayer(RasterData(CHELSA2, BioClim); layer=10, SDT.boundingbox(sdms["Peromyscus leucopus"][:prediction])...)
+bio15 = SDMLayer(RasterData(CHELSA2, BioClim); layer=15, SDT.boundingbox(sdms["Peromyscus leucopus"][:prediction])...)
+
+bio10_smol.indices .= sdms["Peromyscus leucopus"][:prediction].indices
+
+
+f = Figure(size = (900, 1000))
+ax = Axis(f[1,1], aspect=DataAspect(), title="BIO10")
+heatmap!(ax, coarsen(mean, bio10))
+ax = Axis(f[2,1], aspect=DataAspect(), title="BIO15")
+heatmap!(ax, coarsen(mean, bio15))
+f 
